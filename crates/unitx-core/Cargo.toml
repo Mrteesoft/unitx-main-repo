@@ -1,0 +1,10 @@
+[package]
+name = "unitx-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+thiserror = "1"
+rust_decimal = "1"
+serde = { version = "1", features = ["derive"] }
