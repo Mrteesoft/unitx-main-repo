@@ -1,5 +1,6 @@
 pub mod error;
 pub mod temperature;
+pub mod distance;
 
 pub use error::UnitxError;
 
