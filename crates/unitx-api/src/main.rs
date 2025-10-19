@@ -1,4 +1,4 @@
-use axum::{extract::Query, routing::get, Json, Router};
+use axum::{routing::{get, post}, Json, Router};
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -7,9 +7,12 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 #[derive(Serialize)]
 struct Health { status: &'static str, version: &'static str }
 
-// ------------ temperature endpoint ------------
 #[derive(Deserialize)]
-struct TempQuery { value: f64, from: String, to: String }
+struct ConvertRequest {
+    value: f64,
+    from: String,
+    to: String,
+}
 
 #[derive(Serialize)]
 struct ConvertResponse {
@@ -19,10 +22,6 @@ struct ConvertResponse {
     input: f64,
     output: f64,
 }
-
-// ------------ distance endpoint ------------
-#[derive(Deserialize)]
-struct DistQuery { value: f64, from: String, to: String }
 
 #[tokio::main]
 async fn main() {
@@ -37,8 +36,8 @@ async fn main() {
     // routes
     let app = Router::new()
         .route("/healthz", get(health))
-        .route("/convert/temperature", get(convert_temperature))
-        .route("/convert/distance", get(convert_distance));
+        .route("/convert/temperature", post(convert_temperature))
+        .route("/convert/distance", post(convert_distance));
 
     // server
     let listener = TcpListener::bind("0.0.0.0:8080").await.unwrap();
@@ -50,28 +49,32 @@ async fn health() -> Json<Health> {
     Json(Health { status: "ok", version: unitx_core::version() })
 }
 
-async fn convert_temperature(Query(q): Query<TempQuery>) -> Json<ConvertResponse> {
+async fn convert_temperature(Json(req): Json<ConvertRequest>) -> Json<ConvertResponse> {
     use unitx_core::temperature::{convert, TemperatureUnit};
-    let from = TemperatureUnit::parse(&q.from).unwrap_or(TemperatureUnit::C);
-    let to   = TemperatureUnit::parse(&q.to).unwrap_or(TemperatureUnit::C);
-    let out  = convert(q.value, from, to);
+    let from_unit = TemperatureUnit::parse(&req.from).unwrap_or(TemperatureUnit::C);
+    let to_unit   = TemperatureUnit::parse(&req.to).unwrap_or(TemperatureUnit::C);
+    let output    = convert(req.value, from_unit, to_unit);
 
     Json(ConvertResponse {
         category: "temperature",
-        from: q.from, to: q.to,
-        input: q.value, output: out,
+        from: req.from,
+        to: req.to,
+        input: req.value,
+        output,
     })
 }
 
-async fn convert_distance(Query(q): Query<DistQuery>) -> Json<ConvertResponse> {
+async fn convert_distance(Json(req): Json<ConvertRequest>) -> Json<ConvertResponse> {
     use unitx_core::distance::{convert, DistanceUnit};
-    let from = DistanceUnit::parse(&q.from).unwrap_or(DistanceUnit::M);
-    let to   = DistanceUnit::parse(&q.to).unwrap_or(DistanceUnit::M);
-    let out  = convert(q.value, from, to);
+    let from_unit = DistanceUnit::parse(&req.from).unwrap_or(DistanceUnit::M);
+    let to_unit   = DistanceUnit::parse(&req.to).unwrap_or(DistanceUnit::M);
+    let output    = convert(req.value, from_unit, to_unit);
 
     Json(ConvertResponse {
         category: "distance",
-        from: q.from, to: q.to,
-        input: q.value, output: out,
+        from: req.from,
+        to: req.to,
+        input: req.value,
+        output,
     })
 }
