@@ -2,6 +2,8 @@ use axum::{routing::{get, post}, Json, Router};
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use rust_decimal::Decimal;
+use std::str::FromStr;
 
 // ------------ shared types ------------
 #[derive(Serialize)]
@@ -14,6 +16,13 @@ struct ConvertRequest {
     to: String,
 }
 
+#[derive(Deserialize)]
+struct CurrencyRequest {
+    value: String,
+    from: String,
+    to: String,
+}
+
 #[derive(Serialize)]
 struct ConvertResponse {
     category: &'static str,
@@ -21,6 +30,15 @@ struct ConvertResponse {
     to: String,
     input: f64,
     output: f64,
+}
+
+#[derive(Serialize)]
+struct CurrencyResponse {
+    category: &'static str,
+    from: String,
+    to: String,
+    input: String,
+    output: String,
 }
 
 #[tokio::main]
@@ -37,7 +55,8 @@ async fn main() {
     let app = Router::new()
         .route("/healthz", get(health))
         .route("/convert/temperature", post(convert_temperature))
-        .route("/convert/distance", post(convert_distance));
+        .route("/convert/distance", post(convert_distance))
+        .route("/convert/currency", post(convert_currency));
 
     // server
     let listener = TcpListener::bind("0.0.0.0:8080").await.unwrap();
@@ -76,5 +95,21 @@ async fn convert_distance(Json(req): Json<ConvertRequest>) -> Json<ConvertRespon
         to: req.to,
         input: req.value,
         output,
+    })
+}
+
+async fn convert_currency(Json(req): Json<CurrencyRequest>) -> Json<CurrencyResponse> {
+    use unitx_core::currency::{convert, CurrencyUnit};
+    let value = Decimal::from_str(&req.value).unwrap_or(Decimal::ZERO);
+    let from_unit = CurrencyUnit::parse(&req.from).unwrap_or(CurrencyUnit::USD);
+    let to_unit   = CurrencyUnit::parse(&req.to).unwrap_or(CurrencyUnit::USD);
+    let output    = convert(value, from_unit, to_unit);
+
+    Json(CurrencyResponse {
+        category: "currency",
+        from: req.from,
+        to: req.to,
+        input: req.value,
+        output: output.to_string(),
     })
 }
