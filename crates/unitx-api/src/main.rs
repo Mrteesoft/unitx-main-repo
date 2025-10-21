@@ -21,6 +21,7 @@ struct CurrencyRequest {
     value: String,
     from: String,
     to: String,
+    provider: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -99,11 +100,25 @@ async fn convert_distance(Json(req): Json<ConvertRequest>) -> Json<ConvertRespon
 }
 
 async fn convert_currency(Json(req): Json<CurrencyRequest>) -> Json<CurrencyResponse> {
-    use unitx_core::currency::{convert, CurrencyUnit};
+    use unitx_core::currency::{convert_with_provider, CurrencyUnit};
+    use unitx_core::providers::{MockProvider, FixedRateProvider};
+    
     let value = Decimal::from_str(&req.value).unwrap_or(Decimal::ZERO);
     let from_unit = CurrencyUnit::parse(&req.from).unwrap_or(CurrencyUnit::USD);
     let to_unit   = CurrencyUnit::parse(&req.to).unwrap_or(CurrencyUnit::USD);
-    let output    = convert(value, from_unit, to_unit);
+    
+    let output = match req.provider.as_deref() {
+        Some("fixed") => {
+            let provider = FixedRateProvider::new();
+            convert_with_provider(value, from_unit, to_unit, &provider)
+                .unwrap_or(Decimal::ZERO)
+        },
+        _ => {
+            let provider = MockProvider;
+            convert_with_provider(value, from_unit, to_unit, &provider)
+                .unwrap_or(Decimal::ZERO)
+        }
+    };
 
     Json(CurrencyResponse {
         category: "currency",

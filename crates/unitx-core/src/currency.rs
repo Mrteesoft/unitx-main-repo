@@ -1,7 +1,7 @@
 use rust_decimal::Decimal;
-use std::str::FromStr;
+use crate::providers::ExchangeRateProvider;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CurrencyUnit { USD, EUR, GBP, JPY }
 
 impl CurrencyUnit {
@@ -16,19 +16,19 @@ impl CurrencyUnit {
     }
 }
 
-// Mock exchange rates (USD base)
-fn get_usd_rate(currency: CurrencyUnit) -> Decimal {
-    match currency {
-        CurrencyUnit::USD => Decimal::from_str("1.0").unwrap(),
-        CurrencyUnit::EUR => Decimal::from_str("0.85").unwrap(),
-        CurrencyUnit::GBP => Decimal::from_str("0.75").unwrap(),
-        CurrencyUnit::JPY => Decimal::from_str("150.0").unwrap(),
-    }
+pub fn convert_with_provider<P: ExchangeRateProvider>(
+    value: Decimal,
+    from: CurrencyUnit,
+    to: CurrencyUnit,
+    provider: &P,
+) -> Result<Decimal, String> {
+    let rate = provider.get_rate(from, to)?;
+    Ok(value * rate)
 }
 
+// Legacy function for backward compatibility
 pub fn convert(value: Decimal, from: CurrencyUnit, to: CurrencyUnit) -> Decimal {
-    // normalize to USD
-    let usd = value / get_usd_rate(from);
-    // USD -> target
-    usd * get_usd_rate(to)
+    use crate::providers::MockProvider;
+    let provider = MockProvider;
+    convert_with_provider(value, from, to, &provider).unwrap_or(Decimal::ZERO)
 }
