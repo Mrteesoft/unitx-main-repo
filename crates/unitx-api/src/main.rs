@@ -1,4 +1,4 @@
-use axum::{routing::{get, post}, Json, Router};
+use axum::{routing::{get, post}, Json, Router, http::StatusCode, response::{IntoResponse, Response}};
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -42,6 +42,29 @@ struct CurrencyResponse {
     output: String,
 }
 
+#[derive(Serialize)]
+struct ErrorResponse {
+    error: String,
+    message: String,
+}
+
+type ApiResult<T> = Result<Json<T>, ApiError>;
+
+struct ApiError {
+    status: StatusCode,
+    message: String,
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let body = Json(ErrorResponse {
+            error: "conversion_error".to_string(),
+            message: self.message,
+        });
+        (self.status, body).into_response()
+    }
+}
+
 #[tokio::main]
 async fn main() {
     // logging
@@ -69,62 +92,118 @@ async fn health() -> Json<Health> {
     Json(Health { status: "ok", version: unitx_core::version() })
 }
 
-async fn convert_temperature(Json(req): Json<ConvertRequest>) -> Json<ConvertResponse> {
+async fn convert_temperature(Json(req): Json<ConvertRequest>) -> ApiResult<ConvertResponse> {
     use unitx_core::temperature::{convert, TemperatureUnit};
-    let from_unit = TemperatureUnit::parse(&req.from).unwrap_or(TemperatureUnit::C);
-    let to_unit   = TemperatureUnit::parse(&req.to).unwrap_or(TemperatureUnit::C);
-    let output    = convert(req.value, from_unit, to_unit);
+    use unitx_core::validation::validate_temperature_value;
+    
+    // Validate input
+    validate_temperature_value(req.value).map_err(|e| ApiError {
+        status: StatusCode::BAD_REQUEST,
+        message: e.to_string(),
+    })?;
+    
+    let from_unit = TemperatureUnit::parse(&req.from).ok_or_else(|| ApiError {
+        status: StatusCode::BAD_REQUEST,
+        message: format!("Invalid temperature unit: {}", req.from),
+    })?;
+    
+    let to_unit = TemperatureUnit::parse(&req.to).ok_or_else(|| ApiError {
+        status: StatusCode::BAD_REQUEST,
+        message: format!("Invalid temperature unit: {}", req.to),
+    })?;
+    
+    let output = convert(req.value, from_unit, to_unit);
 
-    Json(ConvertResponse {
+    Ok(Json(ConvertResponse {
         category: "temperature",
         from: req.from,
         to: req.to,
         input: req.value,
         output,
-    })
+    }))
 }
 
-async fn convert_distance(Json(req): Json<ConvertRequest>) -> Json<ConvertResponse> {
+async fn convert_distance(Json(req): Json<ConvertRequest>) -> ApiResult<ConvertResponse> {
     use unitx_core::distance::{convert, DistanceUnit};
-    let from_unit = DistanceUnit::parse(&req.from).unwrap_or(DistanceUnit::M);
-    let to_unit   = DistanceUnit::parse(&req.to).unwrap_or(DistanceUnit::M);
-    let output    = convert(req.value, from_unit, to_unit);
+    use unitx_core::validation::validate_distance_value;
+    
+    // Validate input
+    validate_distance_value(req.value).map_err(|e| ApiError {
+        status: StatusCode::BAD_REQUEST,
+        message: e.to_string(),
+    })?;
+    
+    let from_unit = DistanceUnit::parse(&req.from).ok_or_else(|| ApiError {
+        status: StatusCode::BAD_REQUEST,
+        message: format!("Invalid distance unit: {}", req.from),
+    })?;
+    
+    let to_unit = DistanceUnit::parse(&req.to).ok_or_else(|| ApiError {
+        status: StatusCode::BAD_REQUEST,
+        message: format!("Invalid distance unit: {}", req.to),
+    })?;
+    
+    let output = convert(req.value, from_unit, to_unit);
 
-    Json(ConvertResponse {
+    Ok(Json(ConvertResponse {
         category: "distance",
         from: req.from,
         to: req.to,
         input: req.value,
         output,
-    })
+    }))
 }
 
-async fn convert_currency(Json(req): Json<CurrencyRequest>) -> Json<CurrencyResponse> {
+async fn convert_currency(Json(req): Json<CurrencyRequest>) -> ApiResult<CurrencyResponse> {
     use unitx_core::currency::{convert_with_provider, CurrencyUnit};
     use unitx_core::providers::{MockProvider, FixedRateProvider};
+    use unitx_core::validation::validate_currency_value;
     
-    let value = Decimal::from_str(&req.value).unwrap_or(Decimal::ZERO);
-    let from_unit = CurrencyUnit::parse(&req.from).unwrap_or(CurrencyUnit::USD);
-    let to_unit   = CurrencyUnit::parse(&req.to).unwrap_or(CurrencyUnit::USD);
+    // Validate input
+    validate_currency_value(&req.value).map_err(|e| ApiError {
+        status: StatusCode::BAD_REQUEST,
+        message: e.to_string(),
+    })?;
+    
+    let value = Decimal::from_str(&req.value).map_err(|_| ApiError {
+        status: StatusCode::BAD_REQUEST,
+        message: "Invalid currency amount format".to_string(),
+    })?;
+    
+    let from_unit = CurrencyUnit::parse(&req.from).ok_or_else(|| ApiError {
+        status: StatusCode::BAD_REQUEST,
+        message: format!("Invalid currency unit: {}", req.from),
+    })?;
+    
+    let to_unit = CurrencyUnit::parse(&req.to).ok_or_else(|| ApiError {
+        status: StatusCode::BAD_REQUEST,
+        message: format!("Invalid currency unit: {}", req.to),
+    })?;
     
     let output = match req.provider.as_deref() {
         Some("fixed") => {
             let provider = FixedRateProvider::new();
             convert_with_provider(value, from_unit, to_unit, &provider)
-                .unwrap_or(Decimal::ZERO)
+                .map_err(|e| ApiError {
+                    status: StatusCode::INTERNAL_SERVER_ERROR,
+                    message: e,
+                })?
         },
         _ => {
             let provider = MockProvider;
             convert_with_provider(value, from_unit, to_unit, &provider)
-                .unwrap_or(Decimal::ZERO)
+                .map_err(|e| ApiError {
+                    status: StatusCode::INTERNAL_SERVER_ERROR,
+                    message: e,
+                })?
         }
     };
 
-    Json(CurrencyResponse {
+    Ok(Json(CurrencyResponse {
         category: "currency",
         from: req.from,
         to: req.to,
         input: req.value,
         output: output.to_string(),
-    })
+    }))
 }
