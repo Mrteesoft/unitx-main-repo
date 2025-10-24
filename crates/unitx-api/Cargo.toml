@@ -14,3 +14,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rust_decimal = "1"
 chrono = { version = "0.4", features = ["serde"] }
 unitx-core = { path = "../unitx-core" }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["async_tokio"] }
+tower = "0.4"
+
+[[bench]]
+name = "api_endpoints"
+harness = false

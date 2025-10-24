@@ -8,3 +8,10 @@ license = "MIT"
 thiserror = "1"
 rust_decimal = "1"
 serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "conversions"
+harness = false
