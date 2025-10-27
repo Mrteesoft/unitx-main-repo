@@ -62,3 +62,17 @@ ci: fmt-check clippy test
 
 # Development setup
 dev: build test bench
+
+# Docker commands
+docker-build:
+	docker build -t unitx:latest .
+
+docker-run:
+	docker run -p 8080:8080 unitx:latest
+
+docker-test:
+	docker build -t unitx:test . && docker run --rm -p 8080:8080 -d --name unitx-test unitx:test && sleep 2 && curl -f http://localhost:8080/healthz && docker stop unitx-test
+
+# Release workflow
+release: ci docker-build
+	@echo "Release ready - run 'make docker-test' to verify container"

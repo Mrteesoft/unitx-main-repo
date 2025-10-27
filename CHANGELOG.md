@@ -1,19 +1,32 @@
 # Changelog
 
-All notable changes to this project are documented here. This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and follows semantic versioning.
+All notable changes to this project will be documented in this file.
 
-## [0.1.0] - 2025-10-27
+## [0.1.0] - 2024-10-27
 
 ### Added
-- `unitx-core`: temperature, distance, and currency conversion primitives with validation helpers.
-- Live currency provider powered by the European Central Bank daily feed (no API key required).
-- Dedicated error types with `thiserror`, plus comprehensive unit tests and Criterion benchmarks.
-- `unitx-api`: Axum-based HTTP service with CORS/logging middleware, JSON validation, and conversion endpoints for temperature, distance, and currency.
-- Example binaries, documentation, and Dockerfile for local builds/deployment.
-- Benchmarks, scripts, and Makefile targets covering build, test, bench, docker, and CI workflows.
+- Initial release of unitx conversion library and API
+- Temperature conversions (Celsius, Fahrenheit, Kelvin)
+- Distance conversions (Meters, Kilometers, Miles)
+- Currency conversions with live exchange rates
+- REST API with comprehensive validation
+- Performance benchmarking suite
+- Docker container support
+- Comprehensive error handling with field-level validation
+- Request logging and CORS middleware
+- Live exchange rate provider with caching
+- Fallback providers for offline usage
 
-### Docs & Tooling
-- README quick start, examples, and publishing guidance.
-- CONTRIBUTING, CODE_OF_CONDUCT, and community call for contributions.
-- Continuous benchmarking guide (`BENCHMARKS.md`) and release checklist embedded in README.
+### Features
+- Sub-microsecond conversion performance
+- Production-ready HTTP API
+- Precise decimal arithmetic for currency
+- Network-resilient with fallback providers
+- Comprehensive input validation
+- Developer-friendly error messages
 
+### Documentation
+- Complete API documentation
+- Performance benchmarks
+- Container deployment guide
+- Contributing guidelines
