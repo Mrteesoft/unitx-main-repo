@@ -20,7 +20,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rust_decimal = "1"
 chrono = { version = "0.4", features = ["serde"] }
-unitx-core = { path = "../unitx-core" }
+unitx-core = { version = "0.1.0", path = "../unitx-core" }
 once_cell = "1"
 
 [dev-dependencies]
