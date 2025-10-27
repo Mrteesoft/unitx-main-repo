@@ -1,11 +1,11 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use serde_json::json;
-use unitx_core::temperature::{convert as temp_convert, TemperatureUnit};
-use unitx_core::distance::{convert as dist_convert, DistanceUnit};
-use unitx_core::currency::{convert_with_provider, CurrencyUnit};
-use unitx_core::providers::MockProvider;
 use rust_decimal::Decimal;
+use serde_json::json;
 use std::str::FromStr;
+use unitx_core::currency::{convert_with_provider, CurrencyUnit};
+use unitx_core::distance::{convert as dist_convert, DistanceUnit};
+use unitx_core::providers::LiveExchangeProvider;
+use unitx_core::temperature::{convert as temp_convert, TemperatureUnit};
 
 fn json_parsing_benchmarks(c: &mut Criterion) {
     c.bench_function("json_parse_temperature_request", |b| {
@@ -13,8 +13,9 @@ fn json_parsing_benchmarks(c: &mut Criterion) {
             "value": 37.5,
             "from": "C",
             "to": "F"
-        }).to_string();
-        
+        })
+        .to_string();
+
         b.iter(|| {
             let _: serde_json::Value = serde_json::from_str(black_box(&json_str)).unwrap();
         });
@@ -31,9 +32,12 @@ fn full_conversion_pipeline_benchmarks(c: &mut Criterion) {
             black_box(result);
         });
     });
-    
+
     c.bench_function("full_currency_pipeline", |b| {
-        let provider = MockProvider;
+        let provider = LiveExchangeProvider::new(None);
+        provider
+            .get_rate(CurrencyUnit::USD, CurrencyUnit::EUR)
+            .expect("fetch live USD->EUR rate");
         b.iter(|| {
             let value = Decimal::from_str(black_box("100.00")).unwrap();
             let from = CurrencyUnit::parse(black_box("USD")).unwrap();

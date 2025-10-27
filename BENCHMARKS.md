@@ -20,14 +20,14 @@ cd crates/unitx-api && cargo bench
 ### Core Library (`unitx-core`)
 - **Temperature conversions**: C↔F↔K with different input values
 - **Distance conversions**: M↔KM↔MI with various distances
-- **Currency conversions**: USD↔EUR↔GBP↔JPY with mock and fixed providers
+- **Currency conversions**: USD↔EUR↔GBP↔JPY hitting the live provider (rates cached after the first fetch)
 - **Validation functions**: Input validation for all conversion types
 - **Unit parsing**: String to enum parsing performance
 
 ### API Endpoints (`unitx-api`)
 - **POST /convert/temperature**: Full HTTP request/response cycle
 - **POST /convert/distance**: Including JSON parsing and validation
-- **POST /convert/currency**: End-to-end API performance
+- **POST /convert/currency**: End-to-end API performance (live FX rates, cached per benchmark)
 
 ## Expected Performance
 
@@ -43,4 +43,4 @@ Open `target/criterion/report/index.html` in a browser for interactive charts an
 
 ## Continuous Benchmarking
 
-Run benchmarks before major releases to ensure performance regressions are caught early.
+Run benchmarks before major releases to ensure performance regressions are caught early. Currency benchmarks require outbound network access on the first iteration to warm the cache.

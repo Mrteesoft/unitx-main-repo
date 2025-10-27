@@ -1,4 +1,4 @@
-.PHONY: test bench clean build run
+.PHONY: test bench clean build run docker-build docker-run release
 
 # Default target
 all: build test
@@ -30,6 +30,20 @@ clean:
 # Run the API server
 run:
 	cargo run -p unitx-api
+
+# Build Docker image for the API server
+docker-build:
+	docker build -t unitx-api:latest .
+
+# Run the API server via Docker
+docker-run:
+	docker run --rm -p 8080:8080 unitx-api:latest
+
+# Pre-release sanity check (fmt, clippy, tests, package manifests, docker)
+release: ci
+	cargo package -p unitx-core
+	cargo package -p unitx-api
+	$(MAKE) docker-build
 
 # Check code formatting
 fmt-check:

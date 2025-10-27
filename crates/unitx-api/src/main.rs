@@ -1,20 +1,30 @@
 use axum::{
-    routing::{get, post}, Json, Router, http::StatusCode, 
-    response::{IntoResponse, Response}, middleware::from_fn,
-    extract::DefaultBodyLimit
+    extract::DefaultBodyLimit,
+    http::StatusCode,
+    middleware::from_fn,
+    response::{IntoResponse, Response},
+    routing::{get, post},
+    Json, Router,
 };
+use once_cell::sync::Lazy;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use rust_decimal::Decimal;
-use std::str::FromStr;
 
 mod middleware_layer;
-use middleware_layer::{logging_middleware, cors_middleware};
+use middleware_layer::{cors_middleware, logging_middleware};
+
+static LIVE_PROVIDER: Lazy<unitx_core::providers::LiveExchangeProvider> =
+    Lazy::new(|| unitx_core::providers::LiveExchangeProvider::new(None));
 
 // ------------ shared types ------------
 #[derive(Serialize)]
-struct Health { status: &'static str, version: &'static str }
+struct Health {
+    status: &'static str,
+    version: &'static str,
+}
 
 #[derive(Deserialize)]
 struct ConvertRequest {
@@ -28,6 +38,8 @@ struct CurrencyRequest {
     value: String,
     from: String,
     to: String,
+    #[serde(default)]
+    /// Optional legacy field; only "live" is accepted.
     provider: Option<String>,
 }
 
@@ -76,18 +88,26 @@ struct ApiError {
 
 impl ApiError {
     fn new(status: StatusCode, message: String) -> Self {
-        Self { status, message, field: None }
+        Self {
+            status,
+            message,
+            field: None,
+        }
     }
-    
+
     fn with_field(status: StatusCode, message: String, field: String) -> Self {
-        Self { status, message, field: Some(field) }
+        Self {
+            status,
+            message,
+            field: Some(field),
+        }
     }
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let timestamp = chrono::Utc::now().to_rfc3339();
-        
+
         if let Some(field) = self.field {
             let body = Json(ValidationErrorResponse {
                 error: "validation_error".to_string(),
@@ -136,38 +156,51 @@ async fn main() {
 }
 
 async fn health() -> Json<Health> {
-    Json(Health { status: "ok", version: unitx_core::version() })
+    Json(Health {
+        status: "ok",
+        version: unitx_core::version(),
+    })
 }
 
 async fn convert_temperature(Json(req): Json<ConvertRequest>) -> ApiResult<ConvertResponse> {
     use unitx_core::temperature::{convert, TemperatureUnit};
     use unitx_core::validation::{validate_temperature_value, validate_unit_string};
-    
+
     // Validate units
-    validate_unit_string(&req.from, "Temperature").map_err(|e| 
+    validate_unit_string(&req.from, "Temperature").map_err(|e| {
         ApiError::with_field(StatusCode::BAD_REQUEST, e.to_string(), "from".to_string())
-    )?;
-    validate_unit_string(&req.to, "Temperature").map_err(|e| 
+    })?;
+    validate_unit_string(&req.to, "Temperature").map_err(|e| {
         ApiError::with_field(StatusCode::BAD_REQUEST, e.to_string(), "to".to_string())
-    )?;
-    
+    })?;
+
     // Validate value
-    validate_temperature_value(req.value).map_err(|e| 
+    validate_temperature_value(req.value).map_err(|e| {
         ApiError::with_field(StatusCode::BAD_REQUEST, e.to_string(), "value".to_string())
-    )?;
-    
-    let from_unit = TemperatureUnit::parse(&req.from).ok_or_else(|| 
-        ApiError::with_field(StatusCode::BAD_REQUEST, 
-            format!("Unsupported temperature unit: {} (supported: C, F, K)", req.from),
-            "from".to_string())
-    )?;
-    
-    let to_unit = TemperatureUnit::parse(&req.to).ok_or_else(|| 
-        ApiError::with_field(StatusCode::BAD_REQUEST, 
-            format!("Unsupported temperature unit: {} (supported: C, F, K)", req.to),
-            "to".to_string())
-    )?;
-    
+    })?;
+
+    let from_unit = TemperatureUnit::parse(&req.from).ok_or_else(|| {
+        ApiError::with_field(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Unsupported temperature unit: {} (supported: C, F, K)",
+                req.from
+            ),
+            "from".to_string(),
+        )
+    })?;
+
+    let to_unit = TemperatureUnit::parse(&req.to).ok_or_else(|| {
+        ApiError::with_field(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Unsupported temperature unit: {} (supported: C, F, K)",
+                req.to
+            ),
+            "to".to_string(),
+        )
+    })?;
+
     let output = convert(req.value, from_unit, to_unit);
 
     Ok(Json(ConvertResponse {
@@ -182,24 +215,34 @@ async fn convert_temperature(Json(req): Json<ConvertRequest>) -> ApiResult<Conve
 async fn convert_distance(Json(req): Json<ConvertRequest>) -> ApiResult<ConvertResponse> {
     use unitx_core::distance::{convert, DistanceUnit};
     use unitx_core::validation::validate_distance_value;
-    
+
     // Validate input
-    validate_distance_value(req.value).map_err(|e| 
+    validate_distance_value(req.value).map_err(|e| {
         ApiError::with_field(StatusCode::BAD_REQUEST, e.to_string(), "value".to_string())
-    )?;
-    
-    let from_unit = DistanceUnit::parse(&req.from).ok_or_else(|| 
-        ApiError::with_field(StatusCode::BAD_REQUEST, 
-            format!("Unsupported distance unit: {} (supported: M, KM, MI)", req.from),
-            "from".to_string())
-    )?;
-    
-    let to_unit = DistanceUnit::parse(&req.to).ok_or_else(|| 
-        ApiError::with_field(StatusCode::BAD_REQUEST, 
-            format!("Unsupported distance unit: {} (supported: M, KM, MI)", req.to),
-            "to".to_string())
-    )?;
-    
+    })?;
+
+    let from_unit = DistanceUnit::parse(&req.from).ok_or_else(|| {
+        ApiError::with_field(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Unsupported distance unit: {} (supported: M, KM, MI)",
+                req.from
+            ),
+            "from".to_string(),
+        )
+    })?;
+
+    let to_unit = DistanceUnit::parse(&req.to).ok_or_else(|| {
+        ApiError::with_field(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Unsupported distance unit: {} (supported: M, KM, MI)",
+                req.to
+            ),
+            "to".to_string(),
+        )
+    })?;
+
     let output = convert(req.value, from_unit, to_unit);
 
     Ok(Json(ConvertResponse {
@@ -212,44 +255,76 @@ async fn convert_distance(Json(req): Json<ConvertRequest>) -> ApiResult<ConvertR
 }
 
 async fn convert_currency(Json(req): Json<CurrencyRequest>) -> ApiResult<CurrencyResponse> {
+    use tokio::task::spawn_blocking;
     use unitx_core::currency::{convert_with_provider, CurrencyUnit};
-    use unitx_core::providers::{MockProvider, FixedRateProvider};
+    use unitx_core::providers::LiveExchangeProvider;
     use unitx_core::validation::validate_currency_value;
-    
+
     // Validate input
-    validate_currency_value(&req.value).map_err(|e| 
+    validate_currency_value(&req.value).map_err(|e| {
         ApiError::with_field(StatusCode::BAD_REQUEST, e.to_string(), "value".to_string())
-    )?;
-    
-    let value = Decimal::from_str(&req.value).map_err(|_| 
-        ApiError::with_field(StatusCode::BAD_REQUEST, 
-            "Invalid currency amount format".to_string(), "value".to_string())
-    )?;
-    
-    let from_unit = CurrencyUnit::parse(&req.from).ok_or_else(|| 
-        ApiError::with_field(StatusCode::BAD_REQUEST, 
-            format!("Unsupported currency unit: {} (supported: USD, EUR, GBP, JPY)", req.from),
-            "from".to_string())
-    )?;
-    
-    let to_unit = CurrencyUnit::parse(&req.to).ok_or_else(|| 
-        ApiError::with_field(StatusCode::BAD_REQUEST, 
-            format!("Unsupported currency unit: {} (supported: USD, EUR, GBP, JPY)", req.to),
-            "to".to_string())
-    )?;
-    
-    let output = match req.provider.as_deref() {
-        Some("fixed") => {
-            let provider = FixedRateProvider::new();
-            convert_with_provider(value, from_unit, to_unit, &provider)
-                .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, e))?
-        },
-        _ => {
-            let provider = MockProvider;
-            convert_with_provider(value, from_unit, to_unit, &provider)
-                .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, e))?
+    })?;
+
+    let value = Decimal::from_str(&req.value).map_err(|_| {
+        ApiError::with_field(
+            StatusCode::BAD_REQUEST,
+            "Invalid currency amount format".to_string(),
+            "value".to_string(),
+        )
+    })?;
+
+    let from_unit = CurrencyUnit::parse(&req.from).ok_or_else(|| {
+        ApiError::with_field(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Unsupported currency unit: {} (supported: USD, EUR, GBP, JPY)",
+                req.from
+            ),
+            "from".to_string(),
+        )
+    })?;
+
+    let to_unit = CurrencyUnit::parse(&req.to).ok_or_else(|| {
+        ApiError::with_field(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Unsupported currency unit: {} (supported: USD, EUR, GBP, JPY)",
+                req.to
+            ),
+            "to".to_string(),
+        )
+    })?;
+
+    if let Some(provider) = req.provider.as_deref() {
+        if provider != "live" {
+            return Err(ApiError::with_field(
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "Currency provider '{}' is no longer available. Use 'live' or omit the field.",
+                    provider
+                ),
+                "provider".to_string(),
+            ));
         }
-    };
+    }
+
+    let provider: &'static LiveExchangeProvider = &LIVE_PROVIDER;
+    let output = spawn_blocking(move || convert_with_provider(value, from_unit, to_unit, provider))
+        .await
+        .map_err(|err| {
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Currency conversion task failed: {}", err),
+            )
+        })?
+        .map_err(|err| {
+            let lower = err.to_ascii_lowercase();
+            if lower.contains("access key") || lower.contains("(101)") {
+                ApiError::new(StatusCode::UNAUTHORIZED, err)
+            } else {
+                ApiError::new(StatusCode::BAD_GATEWAY, err)
+            }
+        })?;
 
     Ok(Json(CurrencyResponse {
         category: "currency",

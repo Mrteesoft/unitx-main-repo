@@ -3,6 +3,13 @@ name = "unitx-api"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+description = "Axum HTTP API for the unitx conversion engine."
+repository = "https://github.com/mrteesoft/unitx"
+homepage = "https://github.com/mrteesoft/unitx"
+documentation = "https://docs.rs/unitx-api"
+readme = "README.md"
+keywords = ["units", "conversion", "currency", "rest"]
+categories = ["science", "web-programming::http-server"]
 
 [dependencies]
 axum = "0.7"
@@ -14,6 +21,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rust_decimal = "1"
 chrono = { version = "0.4", features = ["serde"] }
 unitx-core = { path = "../unitx-core" }
+once_cell = "1"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["async_tokio"] }
